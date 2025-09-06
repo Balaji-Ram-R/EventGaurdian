@@ -26,15 +26,30 @@ export default function SignUpPage() {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [colleges, setColleges] = useState<Array<{ id: string; name: string }>>([])
+  const [loadingColleges, setLoadingColleges] = useState(true)
   const router = useRouter()
 
   useEffect(() => {
-    // Mock colleges data
-    setColleges([
-      { id: "1", name: "MIT" },
-      { id: "2", name: "Stanford University" },
-      { id: "3", name: "Harvard University" },
-    ])
+    const fetchColleges = async () => {
+      try {
+        const response = await fetch("/api/colleges")
+        if (response.ok) {
+          const data = await response.json()
+          setColleges(data)
+        } else {
+          console.error("Failed to fetch colleges")
+          // Fallback to empty array if API fails
+          setColleges([])
+        }
+      } catch (error) {
+        console.error("Error fetching colleges:", error)
+        setColleges([])
+      } finally {
+        setLoadingColleges(false)
+      }
+    }
+
+    fetchColleges()
   }, [])
 
   const handleInputChange = (field: string, value: string) => {
@@ -59,7 +74,20 @@ export default function SignUpPage() {
       return
     }
 
+    if (formData.role === "student" && !formData.studentId) {
+      setError("Student ID is required for students")
+      setIsLoading(false)
+      return
+    }
+
     try {
+      console.log("[v0] Attempting signup with data:", {
+        email: formData.email,
+        college_id: formData.collegeId,
+        role: formData.role,
+        name: formData.name,
+      })
+
       const { error } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
@@ -70,16 +98,22 @@ export default function SignUpPage() {
             name: formData.name,
             role: formData.role,
             college_id: formData.collegeId,
-            department: formData.department,
-            student_id: formData.studentId,
+            department: formData.department || null,
+            student_id: formData.studentId || null,
           },
         },
       })
 
-      if (error) throw error
+      if (error) {
+        console.error("[v0] Signup error:", error)
+        throw error
+      }
+
+      console.log("[v0] Signup successful, redirecting to verify email")
       router.push("/auth/verify-email")
     } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : "An error occurred")
+      console.error("[v0] Signup failed:", error)
+      setError(error instanceof Error ? error.message : "An error occurred during signup")
     } finally {
       setIsLoading(false)
     }
@@ -120,9 +154,13 @@ export default function SignUpPage() {
 
                 <div className="grid gap-2">
                   <Label htmlFor="college">College</Label>
-                  <Select value={formData.collegeId} onValueChange={(value) => handleInputChange("collegeId", value)}>
+                  <Select
+                    value={formData.collegeId}
+                    onValueChange={(value) => handleInputChange("collegeId", value)}
+                    disabled={loadingColleges}
+                  >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select your college" />
+                      <SelectValue placeholder={loadingColleges ? "Loading colleges..." : "Select your college"} />
                     </SelectTrigger>
                     <SelectContent>
                       {colleges.map((college) => (
@@ -195,7 +233,7 @@ export default function SignUpPage() {
 
                 {error && <p className="text-sm text-red-500">{error}</p>}
 
-                <Button type="submit" className="w-full" disabled={isLoading}>
+                <Button type="submit" className="w-full" disabled={isLoading || loadingColleges}>
                   {isLoading ? "Creating account..." : "Sign Up"}
                 </Button>
               </div>
